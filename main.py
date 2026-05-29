@@ -6,7 +6,7 @@ from database import get_db
 from schemas import EmployeeLogin, AdminLogin, UserSignUp, ClockAction
 
 app = FastAPI(title="General Attendance API")
-
+asfasdfadfasfafafa
 # ==========================================
 # 1. AUTHENTICATION & REGISTRATION ROUTES
 # ==========================================
