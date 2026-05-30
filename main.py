@@ -43,8 +43,9 @@ def register_user(user: UserSignUp, db: mysql.connector.MySQLConnection = Depend
         new_user_id = cursor.lastrowid
 
         # --- THE UPDATED QUERY ---
+        # Changed 'phone' to 'phone_number' and 'dob' to 'birth_date' to match the new SQL file!
         info_query = """
-            INSERT INTO employee_info (user_id, first_name, last_name, email, phone, dob, category, department)
+            INSERT INTO employee_info (user_id, first_name, last_name, email, phone_number, birth_date, category, department)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
         cursor.execute(info_query, (
@@ -156,7 +157,7 @@ def get_attendance(searchQuery: Optional[str] = None, filterDate: Optional[str] 
     global cache_needs_refresh
 
     if cache_needs_refresh:
-        cursor = db.cursor() # No dictionary=True, forcing Tuples
+        cursor = db.cursor() 
         try:
             query = """
                 SELECT l.first_name, l.last_name, u.special_id, l.department, l.category, 
@@ -173,8 +174,6 @@ def get_attendance(searchQuery: Optional[str] = None, filterDate: Optional[str] 
 
     filtered_data = attendance_cache
 
-    # Because we are using Tuples, we filter using index numbers
-    # Index 0 = first_name, Index 1 = last_name, Index 2 = special_id, Index 5 = log_date
     if searchQuery:
         search = searchQuery.lower()
         filtered_data = [
@@ -187,7 +186,6 @@ def get_attendance(searchQuery: Optional[str] = None, filterDate: Optional[str] 
     if filterDate:
         filtered_data = [row for row in filtered_data if str(row[5]) == filterDate]
 
-    # Convert the filtered tuples into a clean format for the frontend API response
     formatted_data = [
         {
             "first_name": row[0], "last_name": row[1], "special_id": row[2],
