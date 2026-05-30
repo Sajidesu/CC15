@@ -7,7 +7,6 @@ CREATE TABLE users (
     user_id INT AUTO_INCREMENT PRIMARY KEY,
     special_id VARCHAR(50) NOT NULL UNIQUE,
     first_name VARCHAR(50) NOT NULL,
-    password VARBINARY(255) NULL,
     role ENUM('admin', 'employee') DEFAULT 'employee'
     
 
@@ -18,6 +17,7 @@ CREATE TABLE admin_logs (
 	user_id INT NOT NULL,
 	action_taken VARCHAR(255) NOT NULL,
     action_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+	password VARBINARY(255) NULL,
     phone_number VARCHAR(20),
     
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
@@ -65,12 +65,14 @@ CREATE TABLE employee_info (
 
 );
 
-INSERT INTO users (special_id, first_name, role, password)
+INSERT INTO users (special_id, first_name, role)
 VALUES
-('EMP-100', 'Jordan', 'employee', 'jordandagoat'),
-('EMP-110', 'Gefferson', 'employee', 'bagsakonnamisacscc12'),
-('EMP-121', 'Joie Ann', 'employee', 'maamsacc13ogcscc35'),
-('ADM-464', 'Serge Jossiah', 'admin', 'sergecalasara');
+('EMP-100', 'Jordan', 'employee' ),
+('EMP-110', 'Gefferson', 'employee'),
+('EMP-121', 'Joie Ann', 'employee'),
+('ADM-464', 'Serge Jossiah', 'admin'),
+('ADM-005', 'Admin Two', 'admin'),
+('ADM-006', 'Admin Three', 'admin');
 
 
 INSERT INTO employee_logs (user_id, first_name, last_name, department, log_date, time_in, status, category)
@@ -80,9 +82,11 @@ VALUES
 (3, 'Joie Ann', 'Mac', 'BSEMC', '2026-05-28', '2026-05-28 08:01:28', 'on_time', 'Full-Time');
 
 
-INSERT INTO admin_logs (user_id, action_taken, phone_number)
+INSERT INTO admin_logs (user_id, action_taken, phone_number, password)
 VALUES
-(4, 'Manually corrected Gefferson Balase attendance record', '09281734' );
+(4, 'Manually corrected Gefferson Balase attendance record', '09281734', 'bagsakonnamisacscc12' ),
+(5, 'Manually corrected Jordan Canete attendance record', '09281734', 'jordandagoat'),
+(6, 'Manually corrected Joie Ann Mac attendance record', '09281734', 'maamsacc13ogcscc35');
 
 INSERT INTO employee_info (user_id, first_name, last_name, email, category, department, phone_number, birth_date)
 VALUES
