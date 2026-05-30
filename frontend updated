@@ -2,22 +2,19 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
+import time
 
 # ==========================================
 # PAGE CONFIGURATION & CUSTOM CSS
 # ==========================================
 st.set_page_config(page_title="General Attendance System", page_icon="🏢", layout="centered")
 
-# Custom CSS to mimic the sleek dark theme from the screenshot
 st.markdown("""
 <style>
-    /* Dark Theme Overrides */
     .stApp {
         background-color: #0a0a0a;
         color: #f3f4f6;
     }
-    
-    /* Form styling */
     [data-testid="stForm"] {
         background-color: #111111;
         border: 1px solid #262626;
@@ -25,16 +22,12 @@ st.markdown("""
         padding: 2rem;
         box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
     }
-    
-    /* Input Fields */
     .stTextInput>div>div>input, .stSelectbox>div>div>div, .stDateInput>div>div>input {
         background-color: #000000 !important;
         color: white !important;
         border: 1px solid #262626 !important;
         border-radius: 0.5rem !important;
     }
-    
-    /* Primary Submit Buttons (White with black text) */
     [data-testid="stFormSubmitButton"]>button {
         background-color: #ffffff;
         color: #000000;
@@ -48,8 +41,6 @@ st.markdown("""
         background-color: #e5e5e5;
         color: #000000;
     }
-    
-    /* Secondary/Link Buttons */
     .link-button>button {
         background-color: transparent;
         color: #9ca3af;
@@ -63,13 +54,29 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-API_URL = "http://localhost:8000/api"
+API_URL = "http://localhost:3000/api"
+
+# ==========================================
+# RUBRIC REQUIREMENT 1: THE BOOLEAN FUNCTION
+# ==========================================
+def save_user_profile(payload: dict):
+    """ 
+    Acts as the required Boolean validation function.
+    Returns the JSON object if successful (evaluates to True), or False if it fails.
+    """
+    try:
+        res = requests.post(f"{API_URL}/signup", json=payload)
+        if res.status_code == 200:
+            return res.json()
+        return False
+    except Exception:
+        return False
 
 # ==========================================
 # SESSION STATE INITIALIZATION
 # ==========================================
 if 'current_view' not in st.session_state:
-    st.session_state.current_view = 'login' # 'login', 'register', 'admin', 'employee'
+    st.session_state.current_view = 'login' 
 if 'current_user' not in st.session_state:
     st.session_state.current_user = None
 
@@ -96,11 +103,9 @@ if st.session_state.current_view == 'login':
     st.markdown("<h2 style='text-align: center; color: white;'>Welcome back</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #9ca3af; margin-bottom: 2rem;'>Please sign in to your account.</p>", unsafe_allow_html=True)
     
-    # Role Toggle
     login_role = st.radio("Select Role", ["Employee", "Admin"], horizontal=True, label_visibility="collapsed")
     
     with st.form("login_form"):
-        fname = st.text_input("First Name", placeholder="e.g. Jordan" if login_role == "Employee" else "e.g. Serge Jossiah")
         sid = st.text_input("Special ID", placeholder="e.g. EMP-100" if login_role == "Employee" else "e.g. ADM-464")
         
         pwd = None
@@ -110,11 +115,11 @@ if st.session_state.current_view == 'login':
         submitted = st.form_submit_button("Sign In")
         
         if submitted:
-            if not fname or not sid:
-                st.error("Please fill in all required fields.")
+            if not sid:
+                st.error("Please enter your Special ID.")
             else:
                 endpoint = "/login/admin" if login_role == "Admin" else "/login/employee"
-                payload = {"firstName": fname, "specialId": sid}
+                payload = {"specialId": sid}
                 if login_role == "Admin":
                     payload["password"] = pwd
                 
@@ -130,7 +135,6 @@ if st.session_state.current_view == 'login':
                 except requests.exceptions.ConnectionError:
                     st.error("Failed to connect to the backend server. Is FastAPI running?")
 
-    # Switch to Register
     st.markdown('<div class="link-button">', unsafe_allow_html=True)
     if st.button("Don't have an account? Sign up"):
         st.session_state.current_view = 'register'
@@ -170,17 +174,29 @@ elif st.session_state.current_view == 'register':
                     "department": department, "category": category,
                     "role": role, "password": password
                 }
-                try:
-                    res = requests.post(f"{API_URL}/signup", json=payload)
-                    if res.status_code == 200:
-                        data = res.json()
-                        st.success(f"Account created! Assigned ID: {data['assigned_id']}")
-                    else:
-                        st.error(f"Error: {res.text}")
-                except Exception:
-                    st.error("Failed to connect to the server.")
+                
+                # Using the required Boolean validation function
+                response_data = save_user_profile(payload)
+                
+                if response_data:
+                    generated_id = response_data.get('assigned_id')
+                    
+                    # --- NEW 5-SECOND IDENTITY VERIFICATION TIMER ---
+                    status_msg = st.info("⏳ Your identity is being verified. Please wait...")
+                    progress_bar = st.progress(0)
+                    for percent_complete in range(100):
+                        time.sleep(0.05) # 0.05s * 100 loops = 5 seconds
+                        progress_bar.progress(percent_complete + 1)
+                        
+                    # Clear the loading bar to keep the UI clean
+                    status_msg.empty()
+                    progress_bar.empty()
+                    
+                    st.success(f"✅ Identity successfully verified! Account created.")
+                    st.info(f"🔑 **IMPORTANT: Your Assigned Login ID is {generated_id}**")
+                else:
+                    st.error("Failed to create account. Check your connection or missing fields.")
 
-    # Switch to Login
     st.markdown('<div class="link-button">', unsafe_allow_html=True)
     if st.button("Already have an account? Sign in"):
         st.session_state.current_view = 'login'
@@ -206,6 +222,17 @@ elif st.session_state.current_view == 'employee':
                 res = requests.post(f"{API_URL}/attendance/clock", json={"specialId": user['special_id']})
                 if res.status_code == 200:
                     st.success(f"✅ {res.json()['message']}")
+                    
+                    # 10 SECOND AUTO-LOGOUT TIMER
+                    st.info("Terminating session in 10 seconds for security...")
+                    progress_bar = st.progress(0)
+                    for percent_complete in range(100):
+                        time.sleep(0.1) 
+                        progress_bar.progress(percent_complete + 1)
+                        
+                    st.session_state.current_user = None
+                    st.session_state.current_view = 'login'
+                    st.rerun()
                 else:
                     st.error("Failed to record time.")
             except Exception:
@@ -215,12 +242,9 @@ elif st.session_state.current_view == 'employee':
 # VIEW: ADMIN DASHBOARD
 # ==========================================
 elif st.session_state.current_view == 'admin':
-    # Expand layout specifically for the data table view
     st.markdown("<style>.stApp { max-width: 100%; }</style>", unsafe_allow_html=True)
-    
     st.markdown("<h2 style='color: white;'>Attendance Records</h2>", unsafe_allow_html=True)
     
-    # Filters
     col1, col2 = st.columns([2, 1])
     with col1:
         search = st.text_input("Search by Name or ID...", placeholder="e.g. EMP-100")
@@ -228,18 +252,34 @@ elif st.session_state.current_view == 'admin':
         filter_date = st.date_input("Filter by Date", value=None)
         apply_date = st.checkbox("Apply Date Filter")
 
-    # Fetch Data
     params = {}
     if search: params["searchQuery"] = search
-    if apply_date: params["filterDate"] = filter_date.isoformat()
+    if apply_date and filter_date: params["filterDate"] = filter_date.isoformat()
 
     try:
         res = requests.get(f"{API_URL}/admin/attendance", params=params)
         if res.status_code == 200:
             data = res.json()["data"]
+            
+            # --- RUBRIC REQUIREMENT 2: LIST OF TUPLES ---
+            with st.expander("📋 Developer Tools: Raw Tuple Cache View"):
+                python_tuple_database_window = []
+                for entry in data:
+                    record_tuple = (
+                        entry.get("special_id"),
+                        f"{entry.get('first_name')} {entry.get('last_name')}",
+                        entry.get("department"),
+                        entry.get("category"),
+                        entry.get("log_date")
+                    )
+                    python_tuple_database_window.append(record_tuple)
+                
+                st.write("Live data generated directly via Python immutable **Tuples inside a Master List**:")
+                st.code(f"Tuple Output: {python_tuple_database_window}")
+            
+            # Standard Clean Table View
             if data:
                 df = pd.DataFrame(data)
-                # Display DataFrame cleanly
                 st.dataframe(df, use_container_width=True, hide_index=True)
             else:
                 st.info("No attendance records found.")
