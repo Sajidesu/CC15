@@ -7,7 +7,8 @@ import pandas as pd
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="NexTime | General Attendance System", page_icon="⏰", layout="wide")
 
-BACKEND_URL = "http://127.0.0.1:8000/api"
+# Updated port to match our Uvicorn server!
+BACKEND_URL = "http://127.0.0.1:3000/api"
 
 # Glassmorphism and modern UI styling
 st.markdown("""
@@ -60,14 +61,16 @@ if "registration_success" not in st.session_state:
 # ==========================================
 # RUBRIC REQUIREMENT 1: THE BOOLEAN FUNCTION
 # ==========================================
-def save_user_profile(payload: dict) -> bool:
+def save_user_profile(payload: dict):
     """ 
-    Boolean function that sends user information to the backend API.
-    Returns True if successfully saved to the database, False otherwise.
+    Sends user info to backend. 
+    Returns the JSON response if successful, False otherwise.
     """
     try:
         res = requests.post(f"{BACKEND_URL}/signup", json=payload)
-        return res.status_code == 200
+        if res.status_code == 200:
+            return res.json() # Return the full dictionary containing the generated ID
+        return False
     except Exception:
         return False
 
@@ -202,10 +205,11 @@ elif choice == "Sign Up System":
     with st.form("signup_engine"):
         c1, c2 = st.columns(2)
         with c1:
-            sp_id = st.text_input("Assign Unique Special ID")
             fname = st.text_input("First Name String")
             lname = st.text_input("Last Name String")
             email = st.text_input("Corporate Mail Route Address")
+            phone = st.text_input("Contact Phone Number")
+            dob = st.date_input("Date of Birth (Records)", min_value=datetime.date(1940, 1, 1))
         with c2:
             dept = st.selectbox("Department Structural Designation", ["BSCS", "BSEMC", "BSIT", "HR", "Finance"])
             cat = st.selectbox("Classification Schema", ["Full-Time", "Part-Time"])
@@ -216,17 +220,26 @@ elif choice == "Sign Up System":
         
         if submitted:
             payload = {
-                "specialId": sp_id, "firstName": fname, "lastName": lname,
-                "email": email, "department": dept, "category": cat,
-                "role": role, "password": pwd if pwd != "" else None
+                "firstName": fname, 
+                "lastName": lname,
+                "email": email, 
+                "phoneNumber": phone, 
+                "dateOfBirth": str(dob), 
+                "department": dept, 
+                "category": cat,
+                "role": role, 
+                "password": pwd if pwd != "" else None
             }
             
             # Executing the Boolean function rule constraint
-            if save_user_profile(payload):
-                st.success("Boolean Output: True — Data successfully verified & written to database backend!")
+            response_data = save_user_profile(payload)
+            if response_data: 
+                generated_id = response_data.get("assigned_id")
+                st.success(f"Boolean Output: True — Data successfully written to database!")
+                st.info(f"🔑 **IMPORTANT: Your Assigned Login ID is {generated_id}**")
                 st.session_state.registration_success = True
             else:
-                st.error("Boolean Output: False — System Registry Conflict or Faulty Connection.")
+                st.error("Boolean Output: False — System Registry Conflict or Faulty Connection. Check missing fields.")
                 st.session_state.registration_success = False
     st.markdown("</div>", unsafe_allow_html=True)
 
