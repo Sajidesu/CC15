@@ -42,11 +42,21 @@ def register_user(user: UserSignUp, db: mysql.connector.MySQLConnection = Depend
         cursor.execute(user_query, (generated_id, user.firstName, user.password, user.role))
         new_user_id = cursor.lastrowid
 
+        # --- THE UPDATED QUERY ---
         info_query = """
-            INSERT INTO employee_info (user_id, first_name, last_name, email, category, department)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO employee_info (user_id, first_name, last_name, email, phone, dob, category, department)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
-        cursor.execute(info_query, (new_user_id, user.firstName, user.lastName, user.email, user.category, user.department))
+        cursor.execute(info_query, (
+            new_user_id, 
+            user.firstName, 
+            user.lastName, 
+            user.email, 
+            user.phoneNumber, 
+            user.dateOfBirth, 
+            user.category, 
+            user.department
+        ))
         db.commit()
         
         return {
