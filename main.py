@@ -38,12 +38,13 @@ def register_user(user: UserSignUp, db: mysql.connector.MySQLConnection = Depend
     try:
         generated_id = generate_unique_id(user.role, cursor)
 
+        # SECURITY RULE: Employees get NULL passwords, Admins keep theirs
+        final_password = user.password if user.role.lower() == "admin" else None
+
         user_query = "INSERT INTO users (special_id, first_name, password, role) VALUES (%s, %s, %s, %s)"
-        cursor.execute(user_query, (generated_id, user.firstName, user.password, user.role))
+        cursor.execute(user_query, (generated_id, user.firstName, final_password, user.role))
         new_user_id = cursor.lastrowid
 
-        # --- THE UPDATED QUERY ---
-        # Changed 'phone' to 'phone_number' and 'dob' to 'birth_date' to match the new SQL file!
         info_query = """
             INSERT INTO employee_info (user_id, first_name, last_name, email, phone_number, birth_date, category, department)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
