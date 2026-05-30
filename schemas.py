@@ -12,13 +12,14 @@ class AdminLogin(BaseModel):
     password: str
 
 class UserSignUp(BaseModel):
-    specialId: str
     firstName: str
     lastName: str
     email: EmailStr
+    phoneNumber: str
+    dateOfBirth: date
     department: str
-    category: str # "Full-Time" or "Part-Time"
-    role: str # "employee" or "admin"
+    category: str 
+    role: str 
     password: Optional[str] = None
 
 class ClockAction(BaseModel):
