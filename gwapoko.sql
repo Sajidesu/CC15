@@ -7,7 +7,7 @@ CREATE TABLE users (
     user_id INT AUTO_INCREMENT PRIMARY KEY,
     special_id VARCHAR(50) NOT NULL UNIQUE,
     first_name VARCHAR(50) NOT NULL,
-    password VARBINARY(255) NOT NULL,
+    password VARBINARY(255) NULL,
     role ENUM('admin', 'employee') DEFAULT 'employee'
     
 
@@ -63,9 +63,9 @@ CREATE TABLE employee_info (
 
 INSERT INTO users (special_id, first_name, role, password)
 VALUES
-('EMP-100', 'Jordan', 'employee', 'jordandagoat'),
-('EMP-110', 'Gefferson', 'employee', 'bagsakonnamisacscc12'),
-('EMP-121', 'Joie Ann', 'employee', 'maamsacc13ogcscc35'),
+('EMP-100', 'Jordan', 'employee', NULL),
+('EMP-110', 'Gefferson', 'employee', NULL),
+('EMP-121', 'Joie Ann', 'employee', NULL),
 ('ADM-464', 'Serge Jossiah', 'admin', 'sergecalasara'),
 ('ADM-005', 'Admin Two', 'admin', 'admin2password'),
 ('ADM-006', 'Admin Three', 'admin', 'admin3password');
