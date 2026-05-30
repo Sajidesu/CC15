@@ -1,50 +1,59 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 import mysql.connector
+import random
+import string
 from datetime import datetime
 from typing import Optional
+
 from database import get_db
 from schemas import EmployeeLogin, AdminLogin, UserSignUp, ClockAction
 
 app = FastAPI(title="General Attendance API")
 
 # ==========================================
-# 1. AUTHENTICATION & REGISTRATION ROUTES
+# CACHE MEMORY (List of Tuples)
 # ==========================================
+attendance_cache = []
+cache_needs_refresh = True 
 
+# ==========================================
+# HELPER: ID GENERATOR
+# ==========================================
+def generate_unique_id(role: str, cursor) -> str:
+    prefix = "ADM" if role.lower() == "admin" else "EMP"
+    while True:
+        random_suffix = ''.join(random.choices(string.digits, k=4))
+        new_id = f"{prefix}-{random_suffix}"
+        
+        cursor.execute("SELECT special_id FROM users WHERE special_id = %s", (new_id,))
+        if not cursor.fetchone():
+            return new_id 
+
+# ==========================================
+# 1. AUTHENTICATION & REGISTRATION
+# ==========================================
 @app.post("/api/signup")
-def register_user(
-    user: UserSignUp, 
-    db: mysql.connector.MySQLConnection = Depends(get_db)
-):
+def register_user(user: UserSignUp, db: mysql.connector.MySQLConnection = Depends(get_db)):
     cursor = db.cursor()
     try:
-        # 1. Check if special_id already exists
-        cursor.execute("SELECT * FROM users WHERE special_id = %s", (user.specialId,))
-        if cursor.fetchone():
-            raise HTTPException(status_code=400, detail="User with this Special ID already exists")
+        generated_id = generate_unique_id(user.role, cursor)
 
-        # 2. Insert into `users` table first
-        user_query = """
-            INSERT INTO users (special_id, first_name, password, role) 
-            VALUES (%s, %s, %s, %s)
-        """
-        cursor.execute(user_query, (user.specialId, user.firstName, user.password, user.role))
-        
-        # Grab the newly generated user_id
+        user_query = "INSERT INTO users (special_id, first_name, password, role) VALUES (%s, %s, %s, %s)"
+        cursor.execute(user_query, (generated_id, user.firstName, user.password, user.role))
         new_user_id = cursor.lastrowid
 
-        # 3. Insert the rest into `employee_info` table
         info_query = """
             INSERT INTO employee_info (user_id, first_name, last_name, email, category, department)
             VALUES (%s, %s, %s, %s, %s, %s)
         """
-        cursor.execute(info_query, (
-            new_user_id, user.firstName, user.lastName, 
-            user.email, user.category, user.department
-        ))
-        
+        cursor.execute(info_query, (new_user_id, user.firstName, user.lastName, user.email, user.category, user.department))
         db.commit()
-        return {"success": True, "message": "User verified and stored in database."}
+        
+        return {
+            "success": True, 
+            "message": "User verified and stored in database.",
+            "assigned_id": generated_id 
+        }
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -52,16 +61,12 @@ def register_user(
         cursor.close()
 
 @app.post("/api/login/employee")
-def login_employee(
-    user_data: EmployeeLogin, 
-    db: mysql.connector.MySQLConnection = Depends(get_db)
-):
+def login_employee(user_data: EmployeeLogin, db: mysql.connector.MySQLConnection = Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
         query = "SELECT user_id, special_id, first_name, role FROM users WHERE first_name = %s AND special_id = %s AND role = 'employee'"
         cursor.execute(query, (user_data.firstName, user_data.specialId))
         user = cursor.fetchone()
-
         if not user:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid First Name or Special ID")
         return {"success": True, "message": "Login successful", "user": user}
@@ -69,13 +74,9 @@ def login_employee(
         cursor.close()
 
 @app.post("/api/login/admin")
-def login_admin(
-    admin_data: AdminLogin, 
-    db: mysql.connector.MySQLConnection = Depends(get_db)
-):
+def login_admin(admin_data: AdminLogin, db: mysql.connector.MySQLConnection = Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
-        # We use CAST because the password column is VARBINARY
         query = """
             SELECT user_id, special_id, first_name, role 
             FROM users 
@@ -83,7 +84,6 @@ def login_admin(
         """
         cursor.execute(query, (admin_data.firstName, admin_data.specialId, admin_data.password))
         admin = cursor.fetchone()
-
         if not admin:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Admin Credentials")
         return {"success": True, "message": "Admin login successful", "user": admin}
@@ -91,17 +91,13 @@ def login_admin(
         cursor.close()
 
 # ==========================================
-# 2. EMPLOYEE TIME TRACKING ROUTES
+# 2. EMPLOYEE TIME TRACKING
 # ==========================================
-
 @app.post("/api/attendance/clock")
-def clock_in_out(
-    action: ClockAction, 
-    db: mysql.connector.MySQLConnection = Depends(get_db)
-):
+def clock_in_out(action: ClockAction, db: mysql.connector.MySQLConnection = Depends(get_db)):
+    global cache_needs_refresh 
     cursor = db.cursor(dictionary=True)
     try:
-        # 1. Get the user's full details needed for the logs
         cursor.execute("""
             SELECT u.user_id, i.first_name, i.last_name, i.department, i.category
             FROM users u
@@ -113,16 +109,13 @@ def clock_in_out(
         if not employee:
             raise HTTPException(status_code=404, detail="Employee not found")
 
-        # 2. Find the user's most recent log entry
         cursor.execute("""
             SELECT log_id, time_out FROM employee_logs 
             WHERE user_id = %s ORDER BY time_in DESC LIMIT 1
         """, (employee['user_id'],))
         last_record = cursor.fetchone()
-
         current_time = datetime.now()
 
-        # Logic: Time IN
         if not last_record or last_record['time_out'] is not None:
             insert_query = """
                 INSERT INTO employee_logs (user_id, first_name, last_name, department, log_date, time_in, category) 
@@ -133,53 +126,69 @@ def clock_in_out(
                 employee['department'], current_time.date(), current_time, employee['category']
             ))
             db.commit()
+            cache_needs_refresh = True 
             return {"success": True, "action": "timed in", "message": f"{employee['first_name']} has successfully timed in"}
 
-        # Logic: Time OUT
         elif last_record['time_out'] is None:
-            cursor.execute("""
-                UPDATE employee_logs SET time_out = %s WHERE log_id = %s
-            """, (current_time, last_record['log_id']))
+            cursor.execute("UPDATE employee_logs SET time_out = %s WHERE log_id = %s", (current_time, last_record['log_id']))
             db.commit()
+            cache_needs_refresh = True
             return {"success": True, "action": "timed out", "message": f"{employee['first_name']} has successfully timed out"}
-
     finally:
         cursor.close()
 
 # ==========================================
-# 3. ADMIN DASHBOARD ROUTES
+# 3. ADMIN DASHBOARD (CACHED WITH TUPLES)
 # ==========================================
-
 @app.get("/api/admin/attendance")
-def get_attendance(
-    searchQuery: Optional[str] = None, 
-    filterDate: Optional[str] = None, 
-    db: mysql.connector.MySQLConnection = Depends(get_db)
-):
-    cursor = db.cursor(dictionary=True)
-    try:
-        query = """
-            SELECT l.first_name, l.last_name, u.special_id, l.department, l.category, 
-                   l.log_date, l.time_in, l.time_out, l.hours_worked, l.status
-            FROM employee_logs l
-            JOIN users u ON l.user_id = u.user_id
-            WHERE 1=1
-        """
-        params = []
+def get_attendance(searchQuery: Optional[str] = None, filterDate: Optional[str] = None, db: mysql.connector.MySQLConnection = Depends(get_db)):
+    global attendance_cache
+    global cache_needs_refresh
 
-        if searchQuery:
-            query += " AND (l.first_name LIKE %s OR l.last_name LIKE %s OR u.special_id = %s)"
-            params.extend([f"%{searchQuery}%", f"%{searchQuery}%", searchQuery])
+    if cache_needs_refresh:
+        cursor = db.cursor() # No dictionary=True, forcing Tuples
+        try:
+            query = """
+                SELECT l.first_name, l.last_name, u.special_id, l.department, l.category, 
+                       l.log_date, l.time_in, l.time_out, l.hours_worked, l.status
+                FROM employee_logs l
+                JOIN users u ON l.user_id = u.user_id
+                ORDER BY l.log_date DESC, l.time_in DESC
+            """
+            cursor.execute(query)
+            attendance_cache = cursor.fetchall()
+            cache_needs_refresh = False 
+        finally:
+            cursor.close()
+
+    filtered_data = attendance_cache
+
+    # Because we are using Tuples, we filter using index numbers
+    # Index 0 = first_name, Index 1 = last_name, Index 2 = special_id, Index 5 = log_date
+    if searchQuery:
+        search = searchQuery.lower()
+        filtered_data = [
+            row for row in filtered_data 
+            if search in str(row[0]).lower() 
+            or search in str(row[1]).lower() 
+            or search in str(row[2]).lower()
+        ]
         
-        if filterDate:
-            query += " AND l.log_date = %s"
-            params.append(filterDate)
-            
-        query += " ORDER BY l.log_date DESC, l.time_in DESC"
+    if filterDate:
+        filtered_data = [row for row in filtered_data if str(row[5]) == filterDate]
 
-        cursor.execute(query, tuple(params))
-        records = cursor.fetchall()
+    # Convert the filtered tuples into a clean format for the frontend API response
+    formatted_data = [
+        {
+            "first_name": row[0], "last_name": row[1], "special_id": row[2],
+            "department": row[3], "category": row[4], "log_date": row[5],
+            "time_in": row[6], "time_out": row[7], "hours_worked": row[8], "status": row[9]
+        }
+        for row in filtered_data
+    ]
 
-        return {"success": True, "data": records}
-    finally:
-        cursor.close()
+    return {
+        "success": True, 
+        "source": "MySQL Database" if cache_needs_refresh else "Python List of Tuples",
+        "data": formatted_data
+    }
