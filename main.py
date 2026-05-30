@@ -38,7 +38,6 @@ def register_user(user: UserSignUp, db: mysql.connector.MySQLConnection = Depend
     try:
         generated_id = generate_unique_id(user.role, cursor)
 
-        # SECURITY RULE: Employees get NULL passwords, Admins keep theirs
         final_password = user.password if user.role.lower() == "admin" else None
 
         user_query = "INSERT INTO users (special_id, first_name, password, role) VALUES (%s, %s, %s, %s)"
@@ -76,11 +75,11 @@ def register_user(user: UserSignUp, db: mysql.connector.MySQLConnection = Depend
 def login_employee(user_data: EmployeeLogin, db: mysql.connector.MySQLConnection = Depends(get_db)):
     cursor = db.cursor(dictionary=True)
     try:
-        query = "SELECT user_id, special_id, first_name, role FROM users WHERE first_name = %s AND special_id = %s AND role = 'employee'"
-        cursor.execute(query, (user_data.firstName, user_data.specialId))
+        query = "SELECT user_id, special_id, first_name, role FROM users WHERE special_id = %s AND role = 'employee'"
+        cursor.execute(query, (user_data.specialId,))
         user = cursor.fetchone()
         if not user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid First Name or Special ID")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Special ID")
         return {"success": True, "message": "Login successful", "user": user}
     finally:
         cursor.close()
@@ -92,9 +91,9 @@ def login_admin(admin_data: AdminLogin, db: mysql.connector.MySQLConnection = De
         query = """
             SELECT user_id, special_id, first_name, role 
             FROM users 
-            WHERE first_name = %s AND special_id = %s AND CAST(password AS CHAR) = %s AND role = 'admin'
+            WHERE special_id = %s AND CAST(password AS CHAR) = %s AND role = 'admin'
         """
-        cursor.execute(query, (admin_data.firstName, admin_data.specialId, admin_data.password))
+        cursor.execute(query, (admin_data.specialId, admin_data.password))
         admin = cursor.fetchone()
         if not admin:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Admin Credentials")
@@ -157,7 +156,10 @@ def get_attendance(searchQuery: Optional[str] = None, filterDate: Optional[str] 
     global attendance_cache
     global cache_needs_refresh
 
+    data_source = "Python List of Tuples"
+
     if cache_needs_refresh:
+        data_source = "MySQL Database"
         cursor = db.cursor() 
         try:
             query = """
@@ -198,6 +200,6 @@ def get_attendance(searchQuery: Optional[str] = None, filterDate: Optional[str] 
 
     return {
         "success": True, 
-        "source": "MySQL Database" if cache_needs_refresh else "Python List of Tuples",
+        "source": data_source, 
         "data": formatted_data
     }
