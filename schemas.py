@@ -3,11 +3,9 @@ from typing import Optional
 from datetime import date
 
 class EmployeeLogin(BaseModel):
-    firstName: str
     specialId: str
 
 class AdminLogin(BaseModel):
-    firstName: str
     specialId: str
     password: str
 
