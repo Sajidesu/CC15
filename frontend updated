@@ -1,0 +1,247 @@
+import streamlit as st
+import requests
+import pandas as pd
+from datetime import datetime
+
+# ==========================================
+# PAGE CONFIGURATION & CUSTOM CSS
+# ==========================================
+st.set_page_config(page_title="General Attendance System", page_icon="🏢", layout="centered")
+
+# Custom CSS to mimic the sleek dark theme from the screenshot
+st.markdown("""
+<style>
+    /* Dark Theme Overrides */
+    .stApp {
+        background-color: #0a0a0a;
+        color: #f3f4f6;
+    }
+    
+    /* Form styling */
+    [data-testid="stForm"] {
+        background-color: #111111;
+        border: 1px solid #262626;
+        border-radius: 1rem;
+        padding: 2rem;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    
+    /* Input Fields */
+    .stTextInput>div>div>input, .stSelectbox>div>div>div, .stDateInput>div>div>input {
+        background-color: #000000 !important;
+        color: white !important;
+        border: 1px solid #262626 !important;
+        border-radius: 0.5rem !important;
+    }
+    
+    /* Primary Submit Buttons (White with black text) */
+    [data-testid="stFormSubmitButton"]>button {
+        background-color: #ffffff;
+        color: #000000;
+        font-weight: 600;
+        border-radius: 0.5rem;
+        width: 100%;
+        border: none;
+        transition: all 0.2s;
+    }
+    [data-testid="stFormSubmitButton"]>button:hover {
+        background-color: #e5e5e5;
+        color: #000000;
+    }
+    
+    /* Secondary/Link Buttons */
+    .link-button>button {
+        background-color: transparent;
+        color: #9ca3af;
+        border: none;
+        box-shadow: none;
+        text-decoration: underline;
+    }
+    .link-button>button:hover {
+        color: #ffffff;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+API_URL = "http://localhost:8000/api"
+
+# ==========================================
+# SESSION STATE INITIALIZATION
+# ==========================================
+if 'current_view' not in st.session_state:
+    st.session_state.current_view = 'login' # 'login', 'register', 'admin', 'employee'
+if 'current_user' not in st.session_state:
+    st.session_state.current_user = None
+
+# ==========================================
+# HEADER SECTION
+# ==========================================
+col1, col2 = st.columns([3, 1])
+with col1:
+    st.markdown("### 🏢 General Attendance System")
+with col2:
+    if st.session_state.current_user:
+        st.write(f"Hello, **{st.session_state.current_user['first_name']}**")
+        if st.button("Logout", key="logout_btn"):
+            st.session_state.current_user = None
+            st.session_state.current_view = 'login'
+            st.rerun()
+
+st.divider()
+
+# ==========================================
+# VIEW: LOGIN
+# ==========================================
+if st.session_state.current_view == 'login':
+    st.markdown("<h2 style='text-align: center; color: white;'>Welcome back</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #9ca3af; margin-bottom: 2rem;'>Please sign in to your account.</p>", unsafe_allow_html=True)
+    
+    # Role Toggle
+    login_role = st.radio("Select Role", ["Employee", "Admin"], horizontal=True, label_visibility="collapsed")
+    
+    with st.form("login_form"):
+        fname = st.text_input("First Name", placeholder="e.g. Jordan" if login_role == "Employee" else "e.g. Serge Jossiah")
+        sid = st.text_input("Special ID", placeholder="e.g. EMP-100" if login_role == "Employee" else "e.g. ADM-464")
+        
+        pwd = None
+        if login_role == "Admin":
+            pwd = st.text_input("Password", type="password")
+            
+        submitted = st.form_submit_button("Sign In")
+        
+        if submitted:
+            if not fname or not sid:
+                st.error("Please fill in all required fields.")
+            else:
+                endpoint = "/login/admin" if login_role == "Admin" else "/login/employee"
+                payload = {"firstName": fname, "specialId": sid}
+                if login_role == "Admin":
+                    payload["password"] = pwd
+                
+                try:
+                    res = requests.post(f"{API_URL}{endpoint}", json=payload)
+                    if res.status_code == 200:
+                        data = res.json()
+                        st.session_state.current_user = data["user"]
+                        st.session_state.current_view = 'admin' if login_role == "Admin" else 'employee'
+                        st.rerun()
+                    else:
+                        st.error(res.json().get("detail", "Invalid Credentials"))
+                except requests.exceptions.ConnectionError:
+                    st.error("Failed to connect to the backend server. Is FastAPI running?")
+
+    # Switch to Register
+    st.markdown('<div class="link-button">', unsafe_allow_html=True)
+    if st.button("Don't have an account? Sign up"):
+        st.session_state.current_view = 'register'
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ==========================================
+# VIEW: REGISTER
+# ==========================================
+elif st.session_state.current_view == 'register':
+    st.markdown("<h2 style='text-align: center; color: white;'>Create an account</h2>", unsafe_allow_html=True)
+    
+    with st.form("signup_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            first_name = st.text_input("First name*")
+            email = st.text_input("Email address*")
+            dob = st.date_input("Date of Birth*", min_value=datetime(1950, 1, 1))
+            category = st.selectbox("Category*", ["Full-Time", "Part-Time"])
+            
+        with col2:
+            last_name = st.text_input("Last name*")
+            phone = st.text_input("Phone number*")
+            department = st.text_input("Department*", placeholder="e.g., BSCS")
+            role = st.selectbox("Role*", ["employee", "admin"])
+
+        password = st.text_input("Password (Required for Admins)", type="password") if role == "admin" else None
+
+        submitted = st.form_submit_button("Create free account")
+        if submitted:
+            if role == "admin" and not password:
+                st.error("Password is required for Admin role.")
+            else:
+                payload = {
+                    "firstName": first_name, "lastName": last_name, "email": email,
+                    "phoneNumber": phone, "dateOfBirth": dob.isoformat(),
+                    "department": department, "category": category,
+                    "role": role, "password": password
+                }
+                try:
+                    res = requests.post(f"{API_URL}/signup", json=payload)
+                    if res.status_code == 200:
+                        data = res.json()
+                        st.success(f"Account created! Assigned ID: {data['assigned_id']}")
+                    else:
+                        st.error(f"Error: {res.text}")
+                except Exception:
+                    st.error("Failed to connect to the server.")
+
+    # Switch to Login
+    st.markdown('<div class="link-button">', unsafe_allow_html=True)
+    if st.button("Already have an account? Sign in"):
+        st.session_state.current_view = 'login'
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ==========================================
+# VIEW: EMPLOYEE DASHBOARD
+# ==========================================
+elif st.session_state.current_view == 'employee':
+    user = st.session_state.current_user
+    
+    st.markdown("<h2 style='text-align: center; color: white;'>Employee Dashboard</h2>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: center; color: #9ca3af;'>Logged in as <b>{user['first_name']}</b> | ID: <code>{user['special_id']}</code></p>", unsafe_allow_html=True)
+    
+    st.write("")
+    
+    with st.form("clock_form"):
+        st.info("Ready to record your time? Click the button below.")
+        clock_btn = st.form_submit_button("Clock In / Out Now")
+        if clock_btn:
+            try:
+                res = requests.post(f"{API_URL}/attendance/clock", json={"specialId": user['special_id']})
+                if res.status_code == 200:
+                    st.success(f"✅ {res.json()['message']}")
+                else:
+                    st.error("Failed to record time.")
+            except Exception:
+                st.error("Failed to connect to server.")
+
+# ==========================================
+# VIEW: ADMIN DASHBOARD
+# ==========================================
+elif st.session_state.current_view == 'admin':
+    # Expand layout specifically for the data table view
+    st.markdown("<style>.stApp { max-width: 100%; }</style>", unsafe_allow_html=True)
+    
+    st.markdown("<h2 style='color: white;'>Attendance Records</h2>", unsafe_allow_html=True)
+    
+    # Filters
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        search = st.text_input("Search by Name or ID...", placeholder="e.g. EMP-100")
+    with col2:
+        filter_date = st.date_input("Filter by Date", value=None)
+        apply_date = st.checkbox("Apply Date Filter")
+
+    # Fetch Data
+    params = {}
+    if search: params["searchQuery"] = search
+    if apply_date: params["filterDate"] = filter_date.isoformat()
+
+    try:
+        res = requests.get(f"{API_URL}/admin/attendance", params=params)
+        if res.status_code == 200:
+            data = res.json()["data"]
+            if data:
+                df = pd.DataFrame(data)
+                # Display DataFrame cleanly
+                st.dataframe(df, use_container_width=True, hide_index=True)
+            else:
+                st.info("No attendance records found.")
+    except Exception:
+        st.error("Failed to fetch attendance data from the backend.")
